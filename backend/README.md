@@ -26,3 +26,17 @@ Run the backend with:
 ```bash
 uvicorn app.main:app --reload
 ```
+
+## Image analysis
+
+`POST /api/analyze-image` accepts multipart form data with:
+
+- `image` — a JPEG, PNG, GIF, or WebP upload (10 MiB maximum)
+- `text` — the complaint text (at least 10 characters)
+- `location`, `category`, and `language` — optional complaint context fields
+
+The image is read into memory for one server-side Gemini request and is not
+stored permanently. The endpoint returns the same validated `CivicAnalysis`
+shape as `POST /api/analyze`, including the English and Marathi reports,
+category, severity/urgency, location, missing information, and actions. The
+Gemini credential remains server-side and is never accepted in this request.

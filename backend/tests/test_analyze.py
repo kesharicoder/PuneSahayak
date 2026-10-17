@@ -6,11 +6,12 @@ from fastapi.testclient import TestClient
 from app.config import DEFAULT_GEMMA_MODEL, Settings
 from app.main import app
 from app.routes import analyze as analyze_route
-from app.schemas.analysis import AnalysisRequest
+from app.schemas.analysis import AnalysisRequest, CivicAnalysis
 from app.services.gemma import (
     GemmaService,
     InvalidModelResponseError,
     MissingCredentialsError,
+    ProviderError,
 )
 
 
@@ -159,3 +160,112 @@ def test_model_can_be_overridden_by_environment(monkeypatch) -> None:
     settings = Settings.from_environment()
 
     assert settings.gemma_model == "gemma-test-override"
+
+
+class _StubImageService:
+    def __init__(self, result=None, error=None) -> None:
+        self.calls = []
+        self.result = result or CivicAnalysis(**_model_payload())
+        self.error = error
+
+    def analyze_image(self, request, image_bytes, mime_type):
+        self.calls.append((request, image_bytes, mime_type))
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def _image_request(client_instance=client, **overrides):
+    data = {
+        "text": "A pothole is blocking traffic near the bus stop.",
+        "location": "Baner, Pune",
+        "category": "Roads",
+        "language": "English",
+    }
+    data.update(overrides)
+    return client_instance.post(
+        "/api/analyze-image",
+        data=data,
+        files={"image": ("pothole.png", b"mock-image-bytes", "image/png")},
+    )
+
+
+def test_analyze_image_route_passes_multipart_context_to_mocked_service(monkeypatch) -> None:
+    service = _StubImageService()
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    response = _image_request()
+
+    assert response.status_code == 200
+    assert response.json()["category"] == "Roads"
+    request, image_bytes, mime_type = service.calls[0]
+    assert request.text == "A pothole is blocking traffic near the bus stop."
+    assert image_bytes == b"mock-image-bytes"
+    assert mime_type == "image/png"
+
+
+def test_analyze_image_rejects_invalid_form_data_without_provider_call(monkeypatch) -> None:
+    service = _StubImageService()
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    response = _image_request(text="too short", category="Not a category")
+
+    assert response.status_code == 422
+    assert service.calls == []
+
+
+def test_analyze_image_rejects_unsupported_type_and_empty_upload(monkeypatch) -> None:
+    service = _StubImageService()
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    unsupported = client.post(
+        "/api/analyze-image",
+        data={"text": "The road needs urgent repair near my home."},
+        files={"image": ("complaint.txt", b"not-an-image", "text/plain")},
+    )
+    empty = client.post(
+        "/api/analyze-image",
+        data={"text": "The road needs urgent repair near my home."},
+        files={"image": ("empty.png", b"", "image/png")},
+    )
+
+    assert unsupported.status_code == 415
+    assert empty.status_code == 400
+    assert service.calls == []
+
+
+def test_analyze_image_provider_error_is_safe(monkeypatch) -> None:
+    service = _StubImageService(error=ProviderError("provider details stay private"))
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    response = _image_request()
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "Analysis service is temporarily unavailable."
+    }
+
+
+def test_gemma_image_analysis_uses_inline_part_and_existing_response_schema(monkeypatch) -> None:
+    fake_client = _mock_client(_model_payload())
+    service = GemmaService(
+        settings=Settings(gemini_api_key=None, gemma_model="test-model"),
+        client=fake_client,
+    )
+    fake_part = object()
+    monkeypatch.setattr(
+        service,
+        "_image_part",
+        lambda image_bytes, mime_type: fake_part,
+    )
+
+    result = service.analyze_image(
+        AnalysisRequest(text="A pothole is blocking traffic near the bus stop."),
+        b"mock-image-bytes",
+        "image/png",
+    )
+
+    assert result.category == "Roads"
+    assert fake_client.calls[0]["model"] == "test-model"
+    assert fake_client.calls[0]["contents"][1] is fake_part
+    assert "A pothole is blocking traffic" in fake_client.calls[0]["contents"][0]

@@ -748,4 +748,8 @@ function App() {
 }
 
 import { createRoot } from 'react-dom/client';
-createRoot(document.getElementById('root')).render(<App />);
+const container = document.getElementById('root');
+if (!window.__puneSahayakRoot) {
+  window.__puneSahayakRoot = createRoot(container);
+}
+window.__puneSahayakRoot.render(<App />);

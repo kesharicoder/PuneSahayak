@@ -284,7 +284,8 @@ function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
   );
 }
 
-function Analysis({ complaint, result, onReview, onBack, lang, setLang, t }) {
+function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack, lang, setLang, t }) {
+  const waitingForResult = loading || (!result && !error);
   return (
     <>
       <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
@@ -292,58 +293,86 @@ function Analysis({ complaint, result, onReview, onBack, lang, setLang, t }) {
         <Stepper step={1} t={t} />
         <div className="flow-heading">
           <span className="eyebrow">{t.analysis.stepLabel}</span>
-          <h1>{t.analysis.heading}</h1>
-          <p>{t.analysis.subheading}</p>
+          <h1>{error ? 'We couldn’t analyze this yet.' : result ? t.analysis.heading : 'Reading your report…'}</h1>
+          <p>{error || (result ? t.analysis.subheading : 'Your complaint is being sent to the analysis service. This may take a moment.')}</p>
         </div>
         <div className="analysis-grid">
           <div className="analysis-main">
-            <div className="loading-badge">
-              <span className="spinner" /> {t.analysis.analyzingBadge}
-            </div>
-            <div className="analysis-card">
+            {waitingForResult && <>
+              <div className="loading-badge">
+                <span className="spinner" /> {t.analysis.analyzingBadge}
+              </div>
+              <div className="analysis-card">
+                <div className="analysis-card-top">
+                  <div className="spark-icon"><Sparkles size={19} /></div>
+                  <div>
+                    <span className="muted-label">ANALYSIS IN PROGRESS</span>
+                    <h2>Analyzing your complaint…</h2>
+                  </div>
+                </div>
+                <p>We’ll show the department, urgency and next steps when the backend returns a result.</p>
+              </div>
+            </>}
+            {error && <div className="analysis-card analysis-error-card" role="alert">
               <div className="analysis-card-top">
-                <div className="spark-icon"><Sparkles size={19} /></div>
+                <div className="spark-icon"><Zap size={19} /></div>
                 <div>
-                  <span className="muted-label">{t.analysis.summaryLabel}</span>
-                  <h2>{result.summary}</h2>
+                  <span className="muted-label">ANALYSIS UNAVAILABLE</span>
+                  <h2>We couldn’t get a result.</h2>
                 </div>
               </div>
-              <div className="tag-row">
-                <span className="tag green"><ClipboardList size={14} /> {result.category}</span>
-                <span className="tag yellow"><Zap size={14} /> {result.urgency} {t.analysis.urgencySuffix}</span>
+              <p>{error}</p>
+              <div className="review-actions">
+                <button className="primary-button" onClick={onRetry}>Try again <ArrowRight size={17} /></button>
+                <button className="outline-button" onClick={onBack}><ArrowLeft size={17} /> {t.analysis.editBtn}</button>
               </div>
-            </div>
-            <div className="action-list">
-              <h3>{t.analysis.stepsTitle}</h3>
-              {result.actions.map((action, i) => (
-                <div className="action-item" key={action}>
-                  <span>{i + 1}</span>
-                  {action}
-                  <Check size={17} />
+            </div>}
+            {result && <>
+              <div className="analysis-card">
+                <div className="analysis-card-top">
+                  <div className="spark-icon"><Sparkles size={19} /></div>
+                  <div>
+                    <span className="muted-label">{t.analysis.summaryLabel}</span>
+                    <h2>{result.summary}</h2>
+                  </div>
                 </div>
-              ))}
-            </div>
+                <div className="tag-row">
+                  <span className="tag green"><ClipboardList size={14} /> {result.category}</span>
+                  <span className="tag yellow"><Zap size={14} /> {result.urgency} {t.analysis.urgencySuffix}</span>
+                </div>
+              </div>
+              <div className="action-list">
+                <h3>{t.analysis.stepsTitle}</h3>
+                {result.actions.length ? result.actions.map((action, i) => (
+                  <div className="action-item" key={`${action}-${i}`}>
+                    <span>{i + 1}</span>
+                    {action}
+                    <Check size={17} />
+                  </div>
+                )) : <p>The analysis did not include specific next steps. Review the generated report for details.</p>}
+              </div>
+            </>}
           </div>
           <aside className="detail-card">
             <span className="muted-label">{t.analysis.routeToLabel}</span>
             <div className="department">
               <div className="department-icon"><Users size={20} /></div>
               <div>
-                <b>{result.department}</b>
-                <small>{t.analysis.pmcSub}</small>
+                <b>{result?.department || 'Waiting for analysis'}</b>
+                <small>{result ? t.analysis.pmcSub : 'The department will appear here after analysis.'}</small>
               </div>
             </div>
             <div className="detail-location">
-              <MapPin size={16} /> {result.location}
+              <MapPin size={16} /> {result?.location || complaint?.location || 'Location not provided'}
             </div>
             <button className="edit-button" onClick={onBack}>
               <ArrowLeft size={15} /> {t.analysis.editBtn}
             </button>
           </aside>
         </div>
-        <button id="review-report-button" className="primary-button continue-button review-button" onClick={onReview}>
+        {result && <button id="review-report-button" className="primary-button continue-button review-button" onClick={onReview}>
           {t.analysis.reviewBtn} <ArrowRight size={18} />
-        </button>
+        </button>}
       </main>
     </>
   );

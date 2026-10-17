@@ -211,6 +211,224 @@ function Home({ onStart, onInsights, lang, setLang, t }) {
   );
 }
 
+function CameraModal({ isOpen, onClose, onCapture, t }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [capturedDataUrl, setCapturedDataUrl] = useState(null);
+  const [cameraError, setCameraError] = useState('');
+  const [facingMode, setFacingMode] = useState('environment');
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let activeStream = null;
+
+    async function startCamera() {
+      setCameraError('');
+      setCapturedDataUrl(null);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError(t.form.cameraPermissionError);
+        return;
+      }
+
+      try {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+          setHasMultipleCameras(videoDevices.length > 1);
+        } catch {}
+
+        const constraints = {
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        activeStream = stream;
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+      } catch {
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          activeStream = fallbackStream;
+          streamRef.current = fallbackStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = fallbackStream;
+            await videoRef.current.play().catch(() => {});
+          }
+        } catch {
+          setCameraError(t.form.cameraPermissionError);
+        }
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [isOpen, facingMode, t]);
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const handleCapture = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    setCapturedDataUrl(dataUrl);
+    stopStream();
+  };
+
+  const handleRetake = () => {
+    setCapturedDataUrl(null);
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  };
+
+  const handleConfirm = () => {
+    if (!capturedDataUrl) return;
+    fetch(capturedDataUrl)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const file = new File([blob], `civic-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        onCapture(file);
+        handleClose();
+      });
+  };
+
+  const handleClose = () => {
+    stopStream();
+    setCapturedDataUrl(null);
+    setCameraError('');
+    onClose();
+  };
+
+  const toggleFacingMode = () => {
+    stopStream();
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="camera-modal-backdrop" onClick={handleClose}>
+      <div className="camera-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="camera-modal-header">
+          <div>
+            <h3>{t.form.cameraModalTitle}</h3>
+            <p>{t.form.cameraModalSub}</p>
+          </div>
+          <button type="button" className="camera-close-button" onClick={handleClose} aria-label="Close camera">
+            <X size={18} />
+          </button>
+        </div>
+
+        {cameraError ? (
+          <div className="camera-error-container">
+            <AlertCircle size={36} style={{ color: '#d34533', margin: '0 auto' }} />
+            <p>{cameraError}</p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  handleClose();
+                  document.getElementById('issue-image')?.click();
+                }}
+              >
+                <Image size={16} /> {t.form.uploadImage}
+              </button>
+              <button type="button" className="outline-button" onClick={handleClose}>
+                {t.nav.back || 'Cancel'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="camera-viewfinder-container">
+              {capturedDataUrl ? (
+                <img src={capturedDataUrl} alt="Captured preview" className="camera-captured-image" />
+              ) : (
+                <>
+                  <video ref={videoRef} autoPlay playsInline muted className="camera-video" />
+                  <div className="camera-crosshairs">
+                    <span className="camera-corner-tl" />
+                    <span className="camera-corner-tr" />
+                    <span className="camera-corner-bl" />
+                    <span className="camera-corner-br" />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="camera-controls-bar">
+              {capturedDataUrl ? (
+                <>
+                  <button type="button" className="camera-icon-button" onClick={handleRetake}>
+                    <ArrowLeft size={16} /> {t.form.retakePhoto}
+                  </button>
+                  <button type="button" className="primary-button" onClick={handleConfirm}>
+                    <Check size={16} /> {t.form.usePhoto}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {hasMultipleCameras ? (
+                    <button type="button" className="camera-icon-button" onClick={toggleFacingMode} title={t.form.switchCamera}>
+                      <Compass size={16} /> {t.form.switchCamera}
+                    </button>
+                  ) : (
+                    <div style={{ width: 80 }} />
+                  )}
+
+                  <button
+                    type="button"
+                    id="camera-shutter-btn"
+                    className="camera-shutter-button"
+                    onClick={handleCapture}
+                    aria-label={t.form.capturePhoto}
+                  >
+                    <Camera size={26} />
+                  </button>
+
+                  <button type="button" className="camera-icon-button" onClick={handleClose}>
+                    {t.nav.back || 'Cancel'}
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }) {
   const [text, setText] = useState(initialComplaint?.text || '');
   const defaultLoc = lang === 'hi' || lang === 'mr' ? 'कोथरूड, पुणे' : 'Kothrud, Pune';
@@ -219,8 +437,8 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
   const [image, setImage] = useState(initialComplaint?.image || null);
   const [imagePreview, setImagePreview] = useState('');
   const [imageError, setImageError] = useState('');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
   const canContinue = text.trim().length > 10;
 
   useEffect(() => {
@@ -300,20 +518,22 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
               accept="image/*"
               onChange={handleImageChange}
             />
-            <input
-              ref={cameraInputRef}
-              className="visually-hidden"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleImageChange}
-            />
             {!imagePreview ? (
               <div className="image-upload-actions">
-                <button type="button" className="outline-button" onClick={() => fileInputRef.current?.click()}>
+                <button
+                  type="button"
+                  id="upload-file-button"
+                  className="outline-button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <Image size={17} /> {t.form.uploadImage}
                 </button>
-                <button type="button" className="outline-button" onClick={() => cameraInputRef.current?.click()}>
+                <button
+                  type="button"
+                  id="open-camera-button"
+                  className="outline-button"
+                  onClick={() => setIsCameraOpen(true)}
+                >
                   <Camera size={17} /> {t.form.takePhoto}
                 </button>
               </div>
@@ -331,6 +551,16 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
             )}
             {imageError && <p className="field-error" role="alert">{imageError}</p>}
           </div>
+
+          <CameraModal
+            isOpen={isCameraOpen}
+            onClose={() => setIsCameraOpen(false)}
+            onCapture={(file) => {
+              setImage(file);
+              setImageError('');
+            }}
+            t={t}
+          />
           <div className="form-row">
             <div>
               <label htmlFor="location"><MapPin size={16} /> {t.form.labelLocation}</label>

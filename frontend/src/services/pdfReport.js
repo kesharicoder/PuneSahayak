@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { locationToText } from './geocoding';
+import { locationToText } from './apiClient';
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;

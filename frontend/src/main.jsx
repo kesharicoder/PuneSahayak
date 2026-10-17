@@ -4,7 +4,7 @@ import {
   Clock, Compass, FileText, Globe, Image, MapPin, Menu, MessageCircle, Mic, MicOff, Phone, Plus,
   Send, ShieldCheck, Sparkles, Trash2, Users, X, Zap,
 } from 'lucide-react';
-import { analyzeComplaint, analyzeComplaintImage } from './services/apiClient';
+import { analyzeComplaint, analyzeComplaintImage, locationToText } from './services/apiClient';
 import { downloadReportPdf } from './services/pdfReport';
 import { languages, translations } from './i18n/translations';
 import { puneAreas } from './data/puneWardsData';

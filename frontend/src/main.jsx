@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Component } from 'react';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Bot, Building2, Camera, Check, ChevronDown, ClipboardList,
   Clock, Compass, FileText, Globe, Image, MapPin, Menu, MessageCircle, Mic, MicOff, Phone, Plus,
@@ -6,10 +6,8 @@ import {
 } from 'lucide-react';
 import { analyzeComplaint, analyzeComplaintImage } from './services/apiClient';
 import { downloadReportPdf } from './services/pdfReport';
-import { locationToText } from './services/geocoding';
 import { languages, translations } from './i18n/translations';
 import { puneAreas } from './data/puneWardsData';
-import LocationPicker from './components/LocationPicker';
 import './styles.css';
 
 function LanguageSelector({ lang, setLang }) {
@@ -490,16 +488,10 @@ function detectSpokenLanguage(str) {
 function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }) {
   const [text, setText] = useState(initialComplaint?.text || '');
   const defaultLoc = lang === 'hi' || lang === 'mr' ? 'कोथरूड, पुणे' : 'Kothrud, Pune';
-  const initialLocation = initialComplaint?.location;
-  const initialLocationAddress = typeof initialLocation === 'string'
-    ? initialLocation
-    : initialLocation?.address || '';
-  const [selectedLocation, setSelectedLocation] = useState(
-    initialLocation && typeof initialLocation === 'object' ? initialLocation : null,
-  );
-  const [manualLocation, setManualLocation] = useState(
-    initialLocationAddress || (initialComplaint ? '' : defaultLoc),
-  );
+  const initialLoc = typeof initialComplaint?.location === 'string'
+    ? initialComplaint.location
+    : initialComplaint?.location?.address || defaultLoc;
+  const [location, setLocation] = useState(initialLoc);
   const [category, setCategory] = useState(initialComplaint?.category || '');
   const [image, setImage] = useState(initialComplaint?.image || null);
   const [imagePreview, setImagePreview] = useState('');
@@ -672,21 +664,8 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
     setImageError('');
   };
 
-  const handleLocationChange = (nextLocation) => {
-    setSelectedLocation(nextLocation);
-    if (nextLocation) setManualLocation(nextLocation.address || '');
-  };
-
-  const handleManualLocationChange = (event) => {
-    setManualLocation(event.target.value);
-    setSelectedLocation(null);
-  };
-
   const handleAnalyze = () => {
-    const location = selectedLocation || (manualLocation.trim()
-      ? { address: manualLocation.trim() }
-      : null);
-    onAnalyze({ text, location, category, image });
+    onAnalyze({ text, location: location.trim(), category, image });
   };
 
   return (
@@ -863,26 +842,33 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
             }}
             t={t}
           />
-           <div className="form-row location-category-row">
-             <div className="location-form-section">
-               <div className="location-section-heading">
-                 <label><MapPin size={16} /> {t.form.labelLocation}</label>
-                 <span>Choose a point on the map or enter an address below.</span>
-               </div>
-               <LocationPicker value={selectedLocation} onChange={handleLocationChange} />
-               <div className="manual-location-field">
-                 <label htmlFor="location">Manual location (optional)</label>
-                 <div className="input-with-icon">
-                   <MapPin size={17} />
-                   <input
-                     id="location"
-                     value={manualLocation}
-                     onChange={handleManualLocationChange}
-                     placeholder="e.g. Kothrud, Pune"
-                   />
-                 </div>
-               </div>
-             </div>
+          <div className="form-row">
+            <div>
+              <label htmlFor="location">
+                <MapPin size={16} /> {t.form.labelLocation}
+              </label>
+              <div className="input-with-icon">
+                <MapPin size={17} />
+                <input
+                  id="location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder={lang === 'hi' || lang === 'mr' ? 'उदा. कोथरूड, पुणे' : 'e.g. Kothrud, Pune'}
+                />
+              </div>
+              <div className="pune-area-quick-picks" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                {['Kothrud', 'Shivajinagar', 'Viman Nagar', 'Baner', 'Hadapsar'].map((areaName) => (
+                  <button
+                    key={areaName}
+                    type="button"
+                    onClick={() => setLocation(`${areaName}, Pune`)}
+                    style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', border: '1px solid #dce2da', background: '#f8faf8', color: '#174b35', cursor: 'pointer' }}
+                  >
+                    📍 {areaName}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div>
               <label htmlFor="category">
                 {t.form.labelCategory}
@@ -1481,9 +1467,47 @@ function App() {
   );
 }
 
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('PuneSahayak error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '60px 24px', maxWidth: '640px', margin: '60px auto', textAlign: 'center', background: '#fff', borderRadius: '16px', border: '1px solid #dce4dd', boxShadow: '0 20px 40px rgba(0,0,0,0.06)' }}>
+          <h2 style={{ color: '#174b35', fontFamily: 'Fraunces, serif', fontSize: '28px', margin: '0 0 12px' }}>Something went wrong</h2>
+          <p style={{ color: '#6d7e75', margin: '0 0 24px', fontSize: '15px' }}>
+            We encountered an unexpected error. You can refresh or return to the main page.
+          </p>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => window.location.reload()}
+          >
+            Reload application
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 import { createRoot } from 'react-dom/client';
 const container = document.getElementById('root');
 if (!window.__puneSahayakRoot) {
   window.__puneSahayakRoot = createRoot(container);
 }
-window.__puneSahayakRoot.render(<App />);
+window.__puneSahayakRoot.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
+

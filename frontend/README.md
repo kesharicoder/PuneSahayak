@@ -1,7 +1,8 @@
 # PuneSahayak frontend
 
 The frontend provides the complaint submission form, live backend analysis
-state, report review screen, and export actions.
+state, conversational follow-up questions, image evidence capture, report
+review, and browser PDF export.
 
 ## Run locally
 
@@ -30,9 +31,19 @@ To verify a production build:
 npm run build
 ```
 
-The frontend calls `POST /api/analyze` for each complaint. If the backend is
-unavailable or returns an error, the flow shows an actionable error state and
-does not present simulated analysis results.
+The frontend calls `POST /api/analyze` for text-only complaints and
+`POST /api/analyze-image` when an image is attached. Image uploads use
+multipart fields (`image`, `text`, `location`, `category`, and `language`) and
+remain in browser memory. If the backend returns `missing_information`, the
+user is asked one question at a time; each answer is appended to the complaint
+context and sent back through the same endpoint before report generation is
+enabled.
+
+The review screen generates and downloads a PDF directly in the browser. The
+PDF includes the complaint, attached image when it can be embedded, bilingual
+reports, category, urgency, location, department, recommended actions, and an
+AI-assisted-report disclaimer. Provider credentials are never read or sent by
+this frontend.
 
 ## Folders
 

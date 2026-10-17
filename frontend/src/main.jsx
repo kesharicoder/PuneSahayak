@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Bot, Building2, Check, ChevronDown, ClipboardList,
-  Clock, Compass, FileText, Globe, MapPin, Menu, MessageCircle, Mic, Phone, Plus,
-  Send, ShieldCheck, Sparkles, Users, X, Zap,
+  AlertCircle, ArrowLeft, ArrowRight, Bot, Building2, Camera, Check, ChevronDown, ClipboardList,
+  Clock, Compass, FileText, Globe, Image, MapPin, Menu, MessageCircle, Mic, Phone, Plus,
+  Send, ShieldCheck, Sparkles, Trash2, Users, X, Zap,
 } from 'lucide-react';
-import { analyzeComplaint } from './services/apiClient';
+import { analyzeComplaint, analyzeComplaintImage } from './services/apiClient';
+import { downloadReportPdf } from './services/pdfReport';
 import { languages, translations } from './i18n/translations';
 import { puneAreas } from './data/puneWardsData';
 import './styles.css';
@@ -82,6 +83,11 @@ function LanguageSelector({ lang, setLang }) {
 function Header({ onHome, lang, setLang, t, compact = false }) {
   return (
     <header className="topbar">
+      {compact && (
+        <button className="header-back" type="button" onClick={onHome}>
+          <ArrowLeft size={16} /> <span>{t.nav.back}</span>
+        </button>
+      )}
       <button className="brand" onClick={onHome} aria-label="Go to PuneSahayak home">
         <span className="brand-mark">पु</span>
         <span>Pune<span className="brand-accent">Sahayak</span></span>
@@ -205,12 +211,48 @@ function Home({ onStart, onInsights, lang, setLang, t }) {
   );
 }
 
-function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
-  const [text, setText] = useState('');
+function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }) {
+  const [text, setText] = useState(initialComplaint?.text || '');
   const defaultLoc = lang === 'hi' || lang === 'mr' ? 'कोथरूड, पुणे' : 'Kothrud, Pune';
-  const [location, setLocation] = useState(defaultLoc);
-  const [category, setCategory] = useState('');
+  const [location, setLocation] = useState(initialComplaint?.location || defaultLoc);
+  const [category, setCategory] = useState(initialComplaint?.category || '');
+  const [image, setImage] = useState(initialComplaint?.image || null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageError, setImageError] = useState('');
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const canContinue = text.trim().length > 10;
+
+  useEffect(() => {
+    if (!image) {
+      setImagePreview('');
+      return undefined;
+    }
+    const previewUrl = URL.createObjectURL(image);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [image]);
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError(t.form.imageTypeError);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setImageError(t.form.imageSizeError);
+      return;
+    }
+    setImageError('');
+    setImage(file);
+  };
+
+  const removeImage = () => {
+    setImage(null);
+    setImageError('');
+  };
 
   return (
     <>
@@ -245,6 +287,50 @@ function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
               </button>
             ))}
           </div>
+          <div className="image-upload-section">
+            <div className="image-upload-heading">
+              <label htmlFor="issue-image">{t.form.imageLabel}</label>
+              <span>{t.form.imageOptional}</span>
+            </div>
+            <input
+              ref={fileInputRef}
+              id="issue-image"
+              className="visually-hidden"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+            />
+            <input
+              ref={cameraInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageChange}
+            />
+            {!imagePreview ? (
+              <div className="image-upload-actions">
+                <button type="button" className="outline-button" onClick={() => fileInputRef.current?.click()}>
+                  <Image size={17} /> {t.form.uploadImage}
+                </button>
+                <button type="button" className="outline-button" onClick={() => cameraInputRef.current?.click()}>
+                  <Camera size={17} /> {t.form.takePhoto}
+                </button>
+              </div>
+            ) : (
+              <div className="image-preview-card">
+                <img src={imagePreview} alt={t.form.imagePreviewAlt} />
+                <div className="image-preview-details">
+                  <b>{image.name}</b>
+                  <span>{t.form.imageAttached}</span>
+                  <button type="button" className="remove-image-button" onClick={removeImage}>
+                    <Trash2 size={15} /> {t.form.removeImage}
+                  </button>
+                </div>
+              </div>
+            )}
+            {imageError && <p className="field-error" role="alert">{imageError}</p>}
+          </div>
           <div className="form-row">
             <div>
               <label htmlFor="location"><MapPin size={16} /> {t.form.labelLocation}</label>
@@ -272,7 +358,7 @@ function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
             id="submit-analysis-button"
             className="primary-button continue-button"
             disabled={!canContinue}
-            onClick={() => onAnalyze({ text, location, category })}
+            onClick={() => onAnalyze({ text, location, category, image })}
           >
             {t.form.submitBtn} <ArrowRight size={18} />
           </button>
@@ -285,8 +371,26 @@ function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
   );
 }
 
-function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack, lang, setLang, t }) {
+function Analysis({ complaint, result, loading, error, onReview, onFollowUp, onRetry, onBack, conversation, lang, setLang, t }) {
+  const [followUpAnswer, setFollowUpAnswer] = useState('');
   const waitingForResult = loading || (!result && !error);
+  const missingInformation = result?.missingInformation || [];
+  const needsFollowUp = Boolean(result && missingInformation.length);
+  const followUpQuestion = missingInformation[0]
+    ? /\?$/.test(missingInformation[0])
+      ? missingInformation[0]
+      : `Can you share ${missingInformation[0].replace(/^exact\s+/i, 'the exact ')}?`
+    : '';
+
+  useEffect(() => {
+    setFollowUpAnswer('');
+  }, [result]);
+
+  const submitFollowUp = () => {
+    const answer = followUpAnswer.trim();
+    if (answer) onFollowUp(answer);
+  };
+
   return (
     <>
       <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
@@ -328,7 +432,7 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
                 <button className="outline-button" onClick={onBack}><ArrowLeft size={17} /> {t.analysis.editBtn}</button>
               </div>
             </div>}
-            {result && <>
+             {result && <>
               <div className="analysis-card">
                 <div className="analysis-card-top">
                   <div className="spark-icon"><Sparkles size={19} /></div>
@@ -342,7 +446,7 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
                   <span className="tag yellow"><Zap size={14} /> {result.urgency} {t.analysis.urgencySuffix}</span>
                 </div>
               </div>
-              <div className="action-list">
+               <div className="action-list">
                 <h3>{t.analysis.stepsTitle}</h3>
                 {result.actions.length ? result.actions.map((action, i) => (
                   <div className="action-item" key={`${action}-${i}`}>
@@ -350,9 +454,45 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
                     {action}
                     <Check size={17} />
                   </div>
-                )) : <p>The analysis did not include specific next steps. Review the generated report for details.</p>}
-              </div>
-            </>}
+                 )) : <p>The analysis did not include specific next steps. Review the generated report for details.</p>}
+               </div>
+               {conversation?.length > 0 && (
+                 <div className="conversation-context">
+                   <span className="muted-label">{t.analysis.contextLabel}</span>
+                   {conversation.map((message, index) => (
+                     <div className="conversation-message" key={`${message.role}-${index}`}>
+                       <span>{message.role === 'assistant' ? 'PuneSahayak' : t.analysis.youLabel}</span>
+                       <p>{message.content}</p>
+                     </div>
+                   ))}
+                 </div>
+               )}
+               {needsFollowUp && (
+                 <div className="follow-up-card">
+                   <div className="follow-up-heading">
+                     <div className="spark-icon"><MessageCircle size={19} /></div>
+                     <div>
+                       <span className="muted-label">{t.analysis.followUpLabel}</span>
+                       <h3>{t.analysis.followUpHeading}</h3>
+                     </div>
+                   </div>
+                    <p className="follow-up-question">{followUpQuestion}</p>
+                   <label className="visually-hidden" htmlFor="follow-up-answer">{t.analysis.followUpAnswerLabel}</label>
+                   <textarea
+                     id="follow-up-answer"
+                     value={followUpAnswer}
+                     onChange={(event) => setFollowUpAnswer(event.target.value)}
+                     placeholder={t.analysis.followUpPlaceholder}
+                     rows={3}
+                     maxLength={500}
+                   />
+                   <button type="button" className="primary-button" disabled={!followUpAnswer.trim()} onClick={submitFollowUp}>
+                     {t.analysis.followUpSubmit} <ArrowRight size={17} />
+                   </button>
+                   <small>{t.analysis.followUpProgress(missingInformation.length)}</small>
+                 </div>
+               )}
+             </>}
           </div>
           <aside className="detail-card">
             <span className="muted-label">{t.analysis.routeToLabel}</span>
@@ -371,7 +511,7 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
             </button>
           </aside>
         </div>
-        {result && <button id="review-report-button" className="primary-button continue-button review-button" onClick={onReview}>
+        {result && !needsFollowUp && <button id="review-report-button" className="primary-button continue-button review-button" onClick={onReview}>
           {t.analysis.reviewBtn} <ArrowRight size={18} />
         </button>}
       </main>
@@ -381,7 +521,23 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
 
 function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
   const [shared, setShared] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const recommendedAction = result.actions.length ? `${result.actions.join('. ')}.` : result.report;
+
+  const generateReport = async () => {
+    setGenerating(true);
+    setDownloadError('');
+    try {
+      await downloadReportPdf(complaint, result);
+      setShared(true);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : t.review.downloadError);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <>
       <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
@@ -424,25 +580,32 @@ function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
             <span className="muted-label">{t.review.recommendedActionLabel}</span>
             <p>{recommendedAction}</p>
           </div>
+          <div className="report-body disclaimer-block">
+            <span className="muted-label">{t.review.disclaimerLabel}</span>
+            <p>{result.disclaimer || t.review.disclaimerText}</p>
+          </div>
         </div>
         <div className="review-actions">
           <button className="outline-button" onClick={onBack}>
             <ArrowLeft size={17} /> {t.review.makeEditsBtn}
           </button>
-          <button id="share-report-button" className="primary-button" onClick={() => setShared(true)}>
-            {shared ? (
+          <button id="share-report-button" className="primary-button" disabled={generating} onClick={generateReport}>
+            {generating ? (
+              <><span className="spinner" /> {t.review.generatingBtn}</>
+            ) : shared ? (
               <><Check size={17} /> {t.review.sharedBtn}</>
             ) : (
-              <><Send size={17} /> {t.review.shareBtn}</>
+              <><FileText size={17} /> {t.review.shareBtn}</>
             )}
           </button>
         </div>
+        {downloadError && <div className="analysis-error-card report-download-error" role="alert">{downloadError}</div>}
         {shared && (
           <div className="success-message">
             <Check size={19} />
             <div>
               <b>{t.review.successHeading}</b>
-              <span>{result.reference ? <>{t.review.successText}<strong>{result.reference}</strong>{t.review.successSub}</> : 'Your report is ready to share with PMC.'}</span>
+              <span>{result.reference ? <>{t.review.successText}<strong>{result.reference}</strong>{t.review.successSub}</> : t.review.downloadSuccess}</span>
             </div>
           </div>
         )}
@@ -483,7 +646,7 @@ function Insights({ onBack, lang, setLang, t }) {
 
   return (
     <>
-      <Header onHome={onBack} lang={lang} setLang={setLang} t={t} />
+      <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
       <main className="insights-page">
         <button className="back-link" onClick={onBack}>
           <ArrowLeft size={16} /> {t.insights.backBtn}
@@ -694,19 +857,28 @@ function App() {
   const t = translations[lang] || translations.en;
 
   const start = () => {
+    setComplaint(null);
     setResult(null);
     setAnalysisError('');
     setAnalysisStatus('idle');
     setScreen('form');
   };
   const analyze = async (data) => {
-    setComplaint(data);
+    const request = {
+      ...data,
+      conversation: data.conversation?.length
+        ? data.conversation
+        : [{ role: 'user', content: data.text }],
+    };
+    setComplaint(request);
     setResult(null);
     setAnalysisError('');
     setAnalysisStatus('loading');
     setScreen('analysis');
     try {
-      const response = await analyzeComplaint(data, lang);
+      const response = request.image
+        ? await analyzeComplaintImage(request, lang)
+        : await analyzeComplaint(request, lang);
       setResult(response);
       setAnalysisStatus('success');
     } catch (error) {
@@ -715,10 +887,25 @@ function App() {
     }
   };
 
+  const answerFollowUp = (answer) => {
+    if (!complaint || !result?.missingInformation?.length) return;
+    const question = result.missingInformation[0];
+    const nextComplaint = {
+      ...complaint,
+      text: `${complaint.text}\n\nAdditional information: ${answer}`,
+      conversation: [
+        ...(complaint.conversation || [{ role: 'user', content: complaint.text }]),
+        { role: 'assistant', content: question },
+        { role: 'user', content: answer },
+      ],
+    };
+    analyze(nextComplaint);
+  };
+
   return screen === 'home' ? (
     <Home onStart={start} onInsights={() => setScreen('insights')} lang={lang} setLang={setLang} t={t} />
   ) : screen === 'form' ? (
-    <ComplaintForm onAnalyze={analyze} onBack={() => setScreen('home')} lang={lang} setLang={setLang} t={t} />
+    <ComplaintForm onAnalyze={analyze} onBack={() => setScreen('home')} initialComplaint={complaint} lang={lang} setLang={setLang} t={t} />
   ) : screen === 'analysis' ? (
     <Analysis
       complaint={complaint}
@@ -726,8 +913,10 @@ function App() {
       loading={analysisStatus === 'loading'}
       error={analysisStatus === 'error' ? analysisError : ''}
       onRetry={() => complaint && analyze(complaint)}
+      onFollowUp={answerFollowUp}
       onReview={() => setScreen('review')}
       onBack={() => setScreen('form')}
+      conversation={complaint?.conversation}
       lang={lang}
       setLang={setLang}
       t={t}

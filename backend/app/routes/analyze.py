@@ -1,5 +1,6 @@
 """Complaint analysis HTTP endpoints."""
 
+import json
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -29,13 +30,25 @@ def _request_from_form(
     location: Optional[str],
     category: Optional[str],
     language: Optional[str],
+    conversation: Optional[str] = None,
 ) -> AnalysisRequest:
+    conversation_data = []
+    if conversation:
+        try:
+            parsed_conversation = json.loads(conversation)
+            if isinstance(parsed_conversation, list):
+                conversation_data = parsed_conversation
+        except (TypeError, json.JSONDecodeError):
+            # Transcript is supplemental context; still validate the primary text.
+            conversation_data = []
+
     try:
         return AnalysisRequest(
             text=text,
             location=location,
             category=category,
             language=language,
+            conversation=conversation_data,
         )
     except ValidationError as exc:
         # Reuse the JSON endpoint's Pydantic validation and let FastAPI return
@@ -86,6 +99,7 @@ async def analyze_image(
     location: Optional[str] = Form(default=None),
     category: Optional[str] = Form(default=None),
     language: Optional[str] = Form(default="auto"),
+    conversation: Optional[str] = Form(default=None),
 ) -> CivicAnalysis:
     """Analyze a complaint and image without storing the upload on disk."""
 
@@ -108,7 +122,7 @@ async def analyze_image(
     if len(image_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image file is too large.")
 
-    request = _request_from_form(text, location, category, language)
+    request = _request_from_form(text, location, category, language, conversation)
     try:
         return get_analysis_service().analyze_image(request, image_bytes, mime_type)
     except MissingCredentialsError as exc:

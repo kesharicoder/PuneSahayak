@@ -9,12 +9,17 @@
 - Marathi, Hinglish, and English fixtures return the expected category shape.
 - Invalid model JSON produces a safe error instead of an unhandled response.
 - Missing location is reported in `missing_information`.
+- Conversation context is passed to Gemma for the next analysis request.
+- Image uploads are accepted only for supported image types and bounded size.
 
 ### Frontend
 
 - A user cannot continue with an empty or very short complaint.
 - The analysis loading state is visible.
 - The user can review and edit before generating a report.
+- The user can upload an image or invoke the camera capture input.
+- A report-generation click downloads a PDF file.
+- A missing detail creates one follow-up question and keeps report generation disabled.
 - Mobile layout stacks cards and keeps primary actions usable.
 - No API key is included in the browser bundle.
 

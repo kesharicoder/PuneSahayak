@@ -70,6 +70,30 @@ def test_analyze_route_returns_validated_model_result(monkeypatch) -> None:
     assert "GEMINI_API_KEY" not in fake_client.calls[0]["contents"]
 
 
+def test_conversation_context_is_sent_to_gemma(monkeypatch) -> None:
+    fake_client = _mock_client(_model_payload())
+    service = GemmaService(
+        settings=Settings(gemini_api_key=None, gemma_model="test-model"),
+        client=fake_client,
+    )
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    response = client.post(
+        "/api/analyze",
+        json={
+            "text": "There is a pothole in Kothrud near MIT College.",
+            "conversation": [
+                {"role": "user", "content": "There is a pothole in Kothrud."},
+                {"role": "assistant", "content": "Can you share the road name?"},
+                {"role": "user", "content": "Near MIT College gate."},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Near MIT College gate." in fake_client.calls[0]["contents"]
+
+
 def test_urgency_and_department_aliases_are_normalized() -> None:
     fake_client = _mock_client(
         {

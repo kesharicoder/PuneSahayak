@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, root_validator, validator
 
@@ -30,6 +30,22 @@ def _clean_optional_text(value: Any) -> Any:
     return cleaned or None
 
 
+class ConversationMessage(BaseModel):
+    """A small, bounded transcript used to gather missing complaint details."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=1000)
+
+    @validator("content", pre=True)
+    def trim_content(cls, value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("conversation content must be a non-empty string")
+        return value.strip()
+
+    class Config:
+        extra = "forbid"
+
+
 class AnalysisRequest(BaseModel):
     """Input accepted by ``POST /api/analyze``."""
 
@@ -37,6 +53,7 @@ class AnalysisRequest(BaseModel):
     location: Optional[str] = Field(default=None, max_length=300)
     category: Optional[str] = Field(default=None, max_length=80)
     language: Optional[str] = Field(default="auto", max_length=50)
+    conversation: List[ConversationMessage] = Field(default_factory=list, max_items=20)
 
     @validator("text", pre=True)
     def validate_text(cls, value: Any) -> str:

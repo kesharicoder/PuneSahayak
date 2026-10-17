@@ -27,6 +27,12 @@ Run the backend with:
 uvicorn app.main:app --reload
 ```
 
+The backend exposes `POST /api/analyze` for text complaints and
+`POST /api/analyze-image` for an in-memory image plus complaint context. Both
+endpoints return the same validated civic-analysis shape. The optional bounded
+conversation context lets Gemma ask for one missing detail at a time before a
+report is generated.
+
 ## Image analysis
 
 `POST /api/analyze-image` accepts multipart form data with:

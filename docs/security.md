@@ -14,6 +14,7 @@ This document covers the hackathon MVP: a public frontend, a FastAPI backend, an
 ## Input and model safety
 
 - Treat every complaint as untrusted user input.
+- Treat conversation messages and image contents as untrusted input.
 - Use a fixed system instruction and allowed category list.
 - Do not allow user text to override model instructions.
 - Validate the model response against a schema before returning it to the frontend.

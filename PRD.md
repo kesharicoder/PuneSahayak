@@ -52,6 +52,10 @@ A community organizer or open-source contributor who wants structured, anonymize
 7. The user edits or confirms the information.
 8. PuneSahayak generates English and Marathi report text and an exportable report.
 
+If Gemma identifies a missing critical detail, the UI asks one follow-up question
+at a time. The user's answer is added to the bounded conversation context and
+the complaint is analyzed again before report generation is enabled.
+
 ## 7. Functional requirements
 
 | ID | Requirement | Priority | Acceptance criterion |
@@ -67,7 +71,10 @@ A community organizer or open-source contributor who wants structured, anonymize
 | FR-09 | User review | Must | The user can review and edit before generating a report. |
 | FR-10 | Privacy controls | Must | No login is required and reports are private until the user chooses to share. |
 | FR-11 | Community insights | Should | The UI can display clearly labelled anonymized demo statistics. |
-| FR-12 | Photo and voice input | Later | Add only after the text workflow is reliable and the model/API support is confirmed. |
+| FR-12 | Image evidence | Must | A user can upload an image from disk or capture one with a camera, preview/remove it, and send it to Gemma with the complaint. |
+| FR-13 | Conversational follow-up | Must | Missing critical details produce one relevant question at a time; report generation stays disabled until required details are answered. |
+| FR-14 | PDF report download | Must | Clicking report generation downloads a PDF containing the complaint, image when available, bilingual reports, metadata, actions, and disclaimer. |
+| FR-15 | Voice input | Later | Add only after the text and image workflows are reliable and speech support is confirmed. |
 
 ## 8. Non-functional requirements
 
@@ -75,6 +82,8 @@ A community organizer or open-source contributor who wants structured, anonymize
 - Model output must be validated before it is displayed as structured data.
 - The UI must work on mobile and desktop widths.
 - The system must show uncertainty and missing information.
+- The system must keep uploaded images in memory only for the analysis request.
+- The system must provide a visible back action on every non-home screen.
 - The application must not claim that a report was submitted to PMC unless a real integration exists.
 - Public source code must use the Apache 2.0 license.
 

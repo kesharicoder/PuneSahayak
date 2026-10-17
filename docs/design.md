@@ -28,9 +28,10 @@ The product should feel like a modern civic-tech service rather than a tradition
 ### Describe
 
 - Complaint text area.
+- Upload-from-device and take-photo actions with preview/remove controls.
 - Optional location and category.
 - Marathi/Hinglish examples.
-- Voice and photo actions can remain as clearly labelled future affordances until implemented.
+- Voice input can remain a clearly labelled future affordance until implemented.
 
 ### Analyze
 
@@ -38,15 +39,20 @@ The product should feel like a modern civic-tech service rather than a tradition
 - Issue summary.
 - Category, urgency, route-to department, and location cards.
 - Suggested next steps.
+- One follow-up question at a time when Gemma reports a missing critical detail.
 - Explicit loading and failure states.
 
 ### Review and generate
 
 - English and Marathi report previews.
+- Attached image preview when the report includes image evidence.
 - Missing-information warning.
 - Edit action.
-- Generate/export action.
+- Generate/download PDF action.
 - Reference number only means a local report was generated, not that it was submitted to PMC.
+
+All non-home screens include a visible back action so the user can correct the
+complaint or return to the previous step without losing control of the flow.
 
 ### Community insights
 

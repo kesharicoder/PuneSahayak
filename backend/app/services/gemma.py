@@ -21,7 +21,8 @@ missing_information, english_report, marathi_report, actions, reference.
 
 category must be one of the allowed categories supplied in the request context.
 If the location or other detail is not known, use null for location and list the
-needed detail in missing_information. Preserve uncertainty rather than guessing.
+needed detail in missing_information. Each missing-information item must be a
+single, direct, user-facing follow-up question. Preserve uncertainty rather than guessing.
 severity should be a concise urgency assessment. Reports are drafts for user
 review and must not claim that a complaint was submitted.
 """
@@ -191,6 +192,7 @@ class GemmaService:
             "location": request.location,
             "category": request.category,
             "language": request.language,
+            "conversation": [message.dict() for message in request.conversation],
             "allowed_categories": list(ALLOWED_CATEGORIES),
         }
         encoded_context = json.dumps(request_context, ensure_ascii=False)

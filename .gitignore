@@ -1,4 +1,7 @@
 .env
+.env.local
+.env.*
+!.env.example
 .venv/
 __pycache__/
 *.py[cod]
@@ -7,4 +10,11 @@ node_modules/
 dist/
 build/
 *.log
+coverage/
+secrets/
+private/
+.opencode/omnirush/inbox/
+*.pem
+*.key
+*.p12
 .DS_Store

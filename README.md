@@ -7,7 +7,20 @@ PuneSahayak is a multilingual civic reporting assistant powered by Gemma 4 throu
 - `frontend/` — web interface for submitting and reviewing civic complaints
 - `backend/` — FastAPI service, Gemma integration, validation, and report generation
 - `data/` — civic categories and sample complaints
-- `docs/` — architecture and demo documentation
+- `docs/` — architecture, design, security, privacy, RBAC, API, testing, and demo documentation
+
+## Project documentation
+
+- [Product requirements](PRD.md)
+- [Architecture](docs/architecture.md)
+- [Design specification](docs/design.md)
+- [Security requirements](docs/security.md)
+- [Privacy and data handling](docs/privacy.md)
+- [Access control and RBAC](docs/rbac.md)
+- [API contract](docs/api.md)
+- [Testing strategy](docs/testing.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Demo script](docs/demo-script.md)
 
 ## Planned AI workflow
 

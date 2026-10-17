@@ -3,6 +3,8 @@ const categoryMap = {
   'Waste management': 'Waste Management',
   'Water supply': 'Water Supply',
   'Street lights': 'Streetlights',
+  'Traffic & signals': 'Traffic',
+  'Drainage & sewerage': 'Drainage',
 };
 
 function getLocalMock(complaint, lang) {

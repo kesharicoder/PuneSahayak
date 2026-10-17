@@ -258,12 +258,12 @@ function ComplaintForm({ onAnalyze, onBack, lang, setLang, t }) {
               </label>
               <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="">{t.form.selectCategory}</option>
-                <option value={t.form.catRoads}>{t.form.catRoads}</option>
-                <option value={t.form.catWaste}>{t.form.catWaste}</option>
-                <option value={t.form.catWater}>{t.form.catWater}</option>
-                <option value={t.form.catLights}>{t.form.catLights}</option>
-                <option value={t.form.catTraffic}>{t.form.catTraffic}</option>
-                <option value={t.form.catDrainage}>{t.form.catDrainage}</option>
+                <option value="Roads & footpaths">{t.form.catRoads}</option>
+                <option value="Waste management">{t.form.catWaste}</option>
+                <option value="Water supply">{t.form.catWater}</option>
+                <option value="Street lights">{t.form.catLights}</option>
+                <option value="Traffic & signals">{t.form.catTraffic}</option>
+                <option value="Drainage & sewerage">{t.form.catDrainage}</option>
               </select>
             </div>
           </div>

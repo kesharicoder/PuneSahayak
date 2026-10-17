@@ -508,6 +508,16 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
   const [interimTranscript, setInterimTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef(null);
+  const textRef = useRef(text);
+  const voiceBaseTextRef = useRef(text.trim());
+  const voiceFinalTextRef = useRef('');
+  const voiceInterimTextRef = useRef('');
+  const shouldKeepListeningRef = useRef(false);
+  const restartTimerRef = useRef(null);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
 
   useEffect(() => {
     const mapped = lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
@@ -522,6 +532,11 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
   }, []);
 
   const stopListening = () => {
+    shouldKeepListeningRef.current = false;
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -532,6 +547,9 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
     }
     setIsListening(false);
     setInterimTranscript('');
+    voiceBaseTextRef.current = textRef.current.trim();
+    voiceFinalTextRef.current = '';
+    voiceInterimTextRef.current = '';
   };
 
   const startListening = (targetLang = voiceLang) => {
@@ -541,6 +559,11 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
       setVoiceError(t.form.voiceNotSupported || 'Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
       return;
     }
+
+    shouldKeepListeningRef.current = true;
+    voiceBaseTextRef.current = textRef.current.trim();
+    voiceFinalTextRef.current = '';
+    voiceInterimTextRef.current = '';
 
     if (recognitionRef.current) {
       try {
@@ -562,52 +585,106 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
       };
 
       recognition.onresult = (event) => {
+        let finalTranscript = '';
         let currentInterim = '';
-        let currentFinal = '';
 
+        // Process only new results and keep committed speech in a ref. This
+        // prevents duplicated phrases when the browser restarts recognition
+        // after a short pause.
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const piece = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            currentFinal += piece;
+            finalTranscript += `${piece} `;
           } else {
-            currentInterim += piece;
+            currentInterim += `${piece} `;
           }
+        }
+
+        finalTranscript = finalTranscript.trim();
+        currentInterim = currentInterim.trim();
+        if (finalTranscript) {
+          voiceFinalTextRef.current = [voiceFinalTextRef.current, finalTranscript]
+            .filter(Boolean)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+        voiceInterimTextRef.current = currentInterim;
+
+        const visibleTranscript = [
+          voiceBaseTextRef.current,
+          voiceFinalTextRef.current,
+          voiceInterimTextRef.current,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (visibleTranscript) {
+          textRef.current = visibleTranscript;
+          setText(visibleTranscript);
         }
 
         if (currentInterim) {
           setInterimTranscript(currentInterim);
-          const detected = detectSpokenLanguage(currentInterim);
+          const detected = detectSpokenLanguage(`${voiceFinalTextRef.current} ${currentInterim}`);
           if (detected) setDetectedVoiceLang(detected);
         }
 
-        if (currentFinal) {
-          const detected = detectSpokenLanguage(currentFinal);
+        if (finalTranscript) {
+          const detected = detectSpokenLanguage(finalTranscript);
           if (detected) setDetectedVoiceLang(detected);
-
-          setText((prev) => {
-            const trimmed = prev.trim();
-            if (!trimmed) return currentFinal.trim();
-            return trimmed + ' ' + currentFinal.trim();
-          });
-          setInterimTranscript('');
         }
       };
 
       recognition.onerror = (event) => {
-        if (event.error === 'not-allowed') {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          shouldKeepListeningRef.current = false;
           setVoiceError(t.form.voicePermissionDenied || 'Microphone access denied. Please allow microphone permission in your browser.');
           setIsListening(false);
+        } else if (event.error === 'audio-capture') {
+          shouldKeepListeningRef.current = false;
+          setVoiceError('No microphone was found. Connect a microphone and try again.');
+          setIsListening(false);
         } else if (event.error === 'no-speech') {
-          // Normal pause in speech
+          // A pause is normal. onend will restart recognition while listening.
+        } else if (event.error === 'aborted') {
+          // Expected when the user presses the stop button.
         } else {
+          shouldKeepListeningRef.current = false;
           setVoiceError(`Voice error: ${event.error}`);
           setIsListening(false);
         }
       };
 
       recognition.onend = () => {
-        setIsListening(false);
         setInterimTranscript('');
+        if (shouldKeepListeningRef.current) {
+          const committedText = [
+            voiceBaseTextRef.current,
+            voiceFinalTextRef.current,
+            voiceInterimTextRef.current,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          textRef.current = committedText;
+          setText(committedText);
+          voiceBaseTextRef.current = committedText;
+          voiceFinalTextRef.current = '';
+          voiceInterimTextRef.current = '';
+          // Browser speech services commonly end after a short pause. Restart
+          // with a fresh recognition object so result indexes start cleanly.
+          restartTimerRef.current = window.setTimeout(() => {
+            if (!shouldKeepListeningRef.current) return;
+            recognitionRef.current = null;
+            startListening(targetLang);
+          }, 180);
+        } else {
+          setIsListening(false);
+        }
       };
 
       recognitionRef.current = recognition;
@@ -621,12 +698,15 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
   const handleVoiceLangChange = (newLang) => {
     setVoiceLang(newLang);
     if (isListening) {
-      startListening(newLang);
+      stopListening();
+      window.setTimeout(() => startListening(newLang), 120);
     }
   };
 
   useEffect(() => {
     return () => {
+      shouldKeepListeningRef.current = false;
+      if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
@@ -1510,4 +1590,3 @@ window.__puneSahayakRoot.render(
     <App />
   </ErrorBoundary>
 );
-

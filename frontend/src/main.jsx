@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  ArrowLeft, ArrowRight, Bot, Check, ChevronDown, ClipboardList, FileText,
-  Globe, MapPin, Menu, MessageCircle, Mic, Plus, Send, ShieldCheck, Sparkles,
-  Users, X, Zap,
+  AlertCircle, ArrowLeft, ArrowRight, Bot, Building2, Check, ChevronDown, ClipboardList,
+  Clock, Compass, FileText, Globe, MapPin, Menu, MessageCircle, Mic, Phone, Plus,
+  Send, ShieldCheck, Sparkles, Users, X, Zap,
 } from 'lucide-react';
 import { analyzeComplaint } from './services/apiClient';
 import { languages, translations } from './i18n/translations';
+import { puneAreas } from './data/puneWardsData';
 import './styles.css';
 
 function LanguageSelector({ lang, setLang }) {
@@ -409,6 +410,16 @@ function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
             <span className="muted-label">{t.review.yourReportLabel}</span>
             <p>“{complaint.text}”</p>
           </div>
+          <div className="report-language-grid">
+            <div className="report-body report-language-card">
+              <span className="muted-label">REPORT (ENGLISH)</span>
+              <p>{result.englishReport}</p>
+            </div>
+            <div className="report-body report-language-card">
+              <span className="muted-label">REPORT (मराठी)</span>
+              <p>{result.marathiReport}</p>
+            </div>
+          </div>
           <div className="report-body">
             <span className="muted-label">{t.review.recommendedActionLabel}</span>
             <p>{recommendedAction}</p>
@@ -441,6 +452,35 @@ function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
 }
 
 function Insights({ onBack, lang, setLang, t }) {
+  const [selectedAreaId, setSelectedAreaId] = useState('all');
+  const [isAreaPickerOpen, setIsAreaPickerOpen] = useState(false);
+  const areaPickerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (areaPickerRef.current && !areaPickerRef.current.contains(event.target)) {
+        setIsAreaPickerOpen(false);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setIsAreaPickerOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const currentArea = puneAreas.find((a) => a.id === selectedAreaId) || puneAreas[0];
+  const areaName = currentArea.name[lang] || currentArea.name.en;
+  const areaZone = currentArea.zone[lang] || currentArea.zone.en;
+  const wardOfficeAddress = currentArea.wardOffice[lang] || currentArea.wardOffice.en;
+  const trendText = lang === 'hi' ? currentArea.trendHi : lang === 'mr' ? currentArea.trendMr : currentArea.trend;
+  const avgDaysText = lang === 'hi' ? currentArea.avgDaysHi : lang === 'mr' ? currentArea.avgDaysMr : currentArea.avgResolutionDays;
+  const topicList = currentArea.topics[lang] || currentArea.topics.en;
+
   return (
     <>
       <Header onHome={onBack} lang={lang} setLang={setLang} t={t} />
@@ -448,54 +488,200 @@ function Insights({ onBack, lang, setLang, t }) {
         <button className="back-link" onClick={onBack}>
           <ArrowLeft size={16} /> {t.insights.backBtn}
         </button>
+
         <div className="flow-heading">
           <span className="eyebrow">{t.insights.eyebrow}</span>
           <h1>{t.insights.heading}</h1>
           <p>{t.insights.subheading}</p>
         </div>
+
+        {/* Selected Area Header with Active Badge & Change Area Picker */}
+        <div className="neighbourhood-card" style={{ marginTop: '10px' }}>
+          <div>
+            <span className="eyebrow">{t.insights.watchEyebrow}</span>
+            <h2>{areaName}</h2>
+            <p>{areaZone}</p>
+            <div className="area-badges-row">
+              <span className="area-badge-pill">
+                <MapPin size={13} /> {areaName}
+              </span>
+              <span className="area-badge-pill">
+                <Clock size={13} /> {t.insights.avgResolutionLabel}: {avgDaysText}
+              </span>
+            </div>
+          </div>
+
+          <div className="area-picker-wrapper" ref={areaPickerRef}>
+            <button
+              type="button"
+              id="change-area-button"
+              className={`area-select-button ${isAreaPickerOpen ? 'open' : ''}`}
+              onClick={() => setIsAreaPickerOpen(!isAreaPickerOpen)}
+              aria-expanded={isAreaPickerOpen}
+              aria-haspopup="listbox"
+            >
+              <Compass size={16} />
+              <span>{t.insights.changeAreaBtn}</span>
+              <ChevronDown size={15} className={`lang-chevron ${isAreaPickerOpen ? 'rotated' : ''}`} />
+            </button>
+
+            {isAreaPickerOpen && (
+              <div className="area-dropdown-popover" role="listbox">
+                <div className="area-dropdown-header">
+                  <span>{t.insights.selectWard}</span>
+                  <span>{puneAreas.length} AREAS</span>
+                </div>
+                {puneAreas.map((area) => {
+                  const isSelected = area.id === selectedAreaId;
+                  const itemLabel = area.name[lang] || area.name.en;
+                  const itemZone = area.zone[lang] || area.zone.en;
+                  return (
+                    <button
+                      key={area.id}
+                      type="button"
+                      id={`ward-option-${area.id}`}
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`area-option-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        setSelectedAreaId(area.id);
+                        setIsAreaPickerOpen(false);
+                      }}
+                    >
+                      <div className="area-option-top">
+                        <span>{itemLabel}</span>
+                        {isSelected && <Check size={15} />}
+                      </div>
+                      <span className="area-option-zone">{itemZone}</span>
+                      <div className="area-option-meta">
+                        <span>{area.totalReports} reports</span>
+                        <span>·</span>
+                        <span>{area.resolvedRate} resolved</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Dynamic Metric Overview for Selected Area */}
         <div className="insight-overview">
           <div className="big-stat">
             <span className="stat-icon"><Users size={19} /></span>
-            <strong>1,284</strong>
+            <strong>{currentArea.totalReports}</strong>
             <span>{t.insights.stat1Label}</span>
-            <div className="trend">{t.insights.stat1Trend}</div>
+            <div className="trend">{trendText}</div>
           </div>
+
           <div className="big-stat yellow-stat">
             <span className="stat-icon"><Check size={19} /></span>
-            <strong>73%</strong>
+            <strong>{currentArea.resolvedRate}</strong>
             <span>{t.insights.stat2Label}</span>
-            <div className="trend">{t.insights.stat2Trend}</div>
+            <div className="trend">{currentArea.resolvedCount} closed issues</div>
           </div>
+
           <div className="topics">
-            <span className="muted-label">{t.insights.topicsLabel}</span>
-            {t.insights.topics.map(({ label, val }) => (
+            <span className="muted-label">{t.insights.topicsLabel} — {areaName}</span>
+            {topicList.map(({ label, val, color }) => (
               <div key={label}>
                 <span>{label}</span>
                 <b>{val}</b>
-                <i><em style={{ width: val.replace(/[^0-9%]/g, '') || val }} /></i>
+                <i><em style={{ width: val.replace(/[^0-9%]/g, '') || val, backgroundColor: color || '#78b58b' }} /></i>
               </div>
             ))}
           </div>
-        </div>
-        <div className="neighbourhood-card">
-          <div>
-            <span className="eyebrow">{t.insights.watchEyebrow}</span>
-            <h2>{t.insights.watchHeading}</h2>
-            <p>{t.insights.watchSub}</p>
+
+          {/* Official Ward Office & Helpline Banner */}
+          <div className="ward-office-banner">
+            <div className="ward-office-info">
+              <div className="ward-office-icon">
+                <Building2 size={22} />
+              </div>
+              <div className="ward-office-details">
+                <b>{t.insights.wardOfficeLabel}: {areaName}</b>
+                <small>{wardOfficeAddress}</small>
+              </div>
+            </div>
+            <div className="ward-helpline-chip">
+              <Phone size={15} />
+              <span>{t.insights.helplineLabel}: {currentArea.helpline}</span>
+            </div>
           </div>
-          <button className="outline-button">
-            {t.insights.changeAreaBtn} <ChevronDown size={15} />
-          </button>
-          <div className="map-placeholder">
-            <MapPin size={31} />
-            <span>{t.insights.mapInteractive}</span>
-            <small>{t.insights.mapComingSoon}</small>
+
+          {/* Recent Hotspots & Citizen Action Section */}
+          <div className="hotspots-section">
+            <div className="hotspots-heading">
+              <h3>{t.insights.hotspotsHeading}</h3>
+              <span className="status-dot pulse" />
+            </div>
+            <div className="hotspots-grid">
+              {currentArea.hotspots.map((item, idx) => {
+                const loc = lang === 'hi' ? item.locationHi : lang === 'mr' ? item.locationMr : item.location;
+                const issue = lang === 'hi' ? item.issueHi : lang === 'mr' ? item.issueMr : item.issue;
+                const status = lang === 'hi' ? item.statusHi : lang === 'mr' ? item.statusMr : item.status;
+                const isResolved = item.status === 'Resolved';
+                return (
+                  <div className="hotspot-card" key={idx}>
+                    <div className="hotspot-header">
+                      <span className={`hotspot-status ${isResolved ? 'resolved' : 'in-progress'}`}>
+                        {isResolved ? <Check size={12} /> : <AlertCircle size={12} />}
+                        {status}
+                      </span>
+                    </div>
+                    <div className="hotspot-location">
+                      <MapPin size={14} />
+                      <span>{loc}</span>
+                    </div>
+                    <div className="hotspot-issue">{issue}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Interactive Map Visualizer with Quick Area Switching Pins */}
+          <div className="interactive-map-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', zIndex: 2 }}>
+              <MapPin size={22} style={{ color: 'var(--forest)' }} />
+              <div>
+                <b style={{ color: 'var(--forest)', fontSize: '15px' }}>{t.insights.mapInteractive}</b>
+                <small style={{ display: 'block', color: '#688072' }}>{t.insights.mapComingSoon}</small>
+              </div>
+            </div>
+            <p style={{ margin: '14px 0 6px', fontSize: '12px', color: '#557262', zIndex: 2 }}>
+              Click any Pune ward below to explore live civic issues:
+            </p>
+            <div className="map-pins-container">
+              {puneAreas.map((area) => {
+                const isSelected = area.id === selectedAreaId;
+                const label = area.name[lang] || area.name.en;
+                return (
+                  <button
+                    key={area.id}
+                    type="button"
+                    className={`map-ward-pin ${isSelected ? 'active' : ''}`}
+                    onClick={() => setSelectedAreaId(area.id)}
+                  >
+                    <MapPin size={13} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Official Source Attribution */}
+          <div className="source-credit">
+            <span>{t.insights.sourceNote}</span>
           </div>
         </div>
       </main>
     </>
   );
 }
+
 
 function App() {
   const [lang, setLang] = useState('en'); // Default selected language is English
@@ -520,7 +706,7 @@ function App() {
     setAnalysisStatus('loading');
     setScreen('analysis');
     try {
-      const response = await analyzeComplaint(data);
+      const response = await analyzeComplaint(data, lang);
       setResult(response);
       setAnalysisStatus('success');
     } catch (error) {

@@ -151,15 +151,20 @@ class GemmaService:
             # This path is useful for isolated unit tests with a mocked client.
             return config_values
 
-        if self.settings.thinking_budget is not None:
+        if self.settings.thinking_level is not None:
             try:
                 config_values["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=self.settings.thinking_budget
+                    thinking_level=self.settings.thinking_level
                 )
             except (AttributeError, TypeError, ValueError):
-                # Older SDKs or models may not expose ThinkingConfig. JSON
-                # output and server-side validation remain enabled.
-                pass
+                # Older SDKs may expose the budget-based form instead.
+                if self.settings.thinking_budget is not None:
+                    try:
+                        config_values["thinking_config"] = types.ThinkingConfig(
+                            thinking_budget=self.settings.thinking_budget
+                        )
+                    except (AttributeError, TypeError, ValueError):
+                        pass
 
         try:
             return types.GenerateContentConfig(**config_values)

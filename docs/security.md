@@ -6,7 +6,7 @@ This document covers the hackathon MVP: a public frontend, a FastAPI backend, an
 
 ## Secrets
 
-- Store `GEMINI_API_KEY` only in a local `.env` file or deployment secret manager.
+- Store `GEMMA_API_KEY` or `GEMINI_API_KEY` only in a local `.env` file or deployment secret manager.
 - Never place keys in React code, browser local storage, screenshots, logs, README examples, or test fixtures.
 - Commit `.env.example` with empty placeholders only.
 - Rotate the key immediately if it is exposed.

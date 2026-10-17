@@ -64,7 +64,8 @@ Response:
 - The backend must validate every model response before returning it.
 - Errors should return a safe user-facing message without provider keys or stack traces.
 
-When `GEMINI_API_KEY` is missing, the endpoint returns HTTP 503. Invalid JSON
-or schema-invalid model output returns HTTP 502. The server uses
+When both `GEMMA_API_KEY` and `GEMINI_API_KEY` are missing, the endpoint returns
+HTTP 503. `GEMMA_API_KEY` takes precedence when both are configured. Invalid
+JSON or schema-invalid model output returns HTTP 502. The server uses
 `gemma-4-26b-a4b-it` by default and accepts `GEMMA_MODEL` as an environment
 override; credentials are never sent to the browser.

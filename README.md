@@ -32,8 +32,18 @@ PuneSahayak is a multilingual civic reporting assistant powered by Gemma 4 throu
 
 ## Local setup
 
-Backend setup instructions will be added as the API is implemented. Copy `.env.example` to `.env` and add the Gemini API key locally. Never commit `.env`.
+Copy `.env.example` to `.env` and configure the Gemini credential in the
+server environment only. Never commit `.env`.
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
 ## Model
 
-The exact Gemma model identifier required by the event will be recorded here after the Gemini API model is confirmed.
+The backend uses `gemma-4-26b-a4b-it` by default through the server-side
+Gemini API client. Set `GEMMA_MODEL` in the server environment to override the
+model. `GEMINI_API_KEY` is read only by the backend and must never be placed in
+frontend code or request payloads.

@@ -11,6 +11,7 @@
 .env.*
 !.env.example
 *.env
+image.png
 
 # Secrets, private certificates & tokens
 secrets/

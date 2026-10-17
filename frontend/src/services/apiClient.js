@@ -1,3 +1,5 @@
+import { locationToText } from './geocoding';
+
 const categoryMap = {
   'Roads & footpaths': 'Roads',
   'Waste management': 'Waste Management',
@@ -17,10 +19,12 @@ function normalizeAnalysis(response, complaint) {
     throw new Error('The analysis service returned an incomplete result. Please try again.');
   }
 
+  const complaintLocation = locationToText(complaint?.location);
+
   return {
     category: response.category,
     urgency: response.severity,
-    location: response.location || complaint.location || 'Location not provided',
+    location: response.location || complaintLocation || 'Location not provided',
     summary: response.summary,
     actions: response.actions,
     department: response.recommended_department,
@@ -51,7 +55,7 @@ export async function analyzeComplaint(complaint, lang = 'auto') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: complaint.text.trim(),
-        location: complaint.location?.trim() || null,
+        location: locationToText(complaint.location) || null,
         category: categoryMap[complaint.category] || null,
         language: lang,
         conversation: complaint.conversation || [{ role: 'user', content: complaint.text.trim() }],
@@ -90,7 +94,7 @@ export async function analyzeComplaintImage(complaint, lang = 'auto') {
   const formData = new FormData();
   formData.append('image', complaint.image);
   formData.append('text', complaint.text.trim());
-  formData.append('location', complaint.location?.trim() || '');
+  formData.append('location', locationToText(complaint.location));
   formData.append('category', categoryMap[complaint.category] || '');
   formData.append('language', lang);
   formData.append(

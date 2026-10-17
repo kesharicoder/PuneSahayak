@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Bot, Building2, Camera, Check, ChevronDown, ClipboardList,
-  Clock, Compass, FileText, Globe, Image, MapPin, Menu, MessageCircle, Mic, Phone, Plus,
+  Clock, Compass, FileText, Globe, Image, MapPin, Menu, MessageCircle, Mic, MicOff, Phone, Plus,
   Send, ShieldCheck, Sparkles, Trash2, Users, X, Zap,
 } from 'lucide-react';
 import { analyzeComplaint, analyzeComplaintImage } from './services/apiClient';
 import { downloadReportPdf } from './services/pdfReport';
+import { locationToText } from './services/geocoding';
 import { languages, translations } from './i18n/translations';
 import { puneAreas } from './data/puneWardsData';
+import LocationPicker from './components/LocationPicker';
 import './styles.css';
 
 function LanguageSelector({ lang, setLang }) {
@@ -124,8 +126,10 @@ function Stepper({ step, t }) {
 function Feature({ icon, number, title, text }) {
   return (
     <div className="feature">
-      <div className="feature-icon">{icon}</div>
-      <span className="feature-number">{number}</span>
+      <div className="feature-top">
+        <div className="feature-icon" aria-hidden="true">{icon}</div>
+        <span className="feature-number" aria-label={`Step ${number}`}>Step {number}</span>
+      </div>
       <h3>{title}</h3>
       <p>{text}</p>
     </div>
@@ -429,10 +433,73 @@ function CameraModal({ isOpen, onClose, onCapture, t }) {
   );
 }
 
+function detectSpokenLanguage(str) {
+  if (!str || !str.trim()) return null;
+
+  const devanagariMatches = str.match(/[\u0900-\u097F]/g) || [];
+  const latinMatches = str.match(/[a-zA-Z]/g) || [];
+
+  if (latinMatches.length > devanagariMatches.length) {
+    return { code: 'en', name: 'English', native: 'English' };
+  }
+
+  if (devanagariMatches.length > 0) {
+    // Unique Marathi character: ळ (U+0933)
+    if (/[\u0933]/.test(str)) {
+      return { code: 'mr', name: 'Marathi', native: 'मराठी' };
+    }
+
+    const marathiWords = [
+      'आहे', 'आहेत', 'नाही', 'नाहीये', 'झाले', 'झाली', 'झाला', 'केले', 'केली', 'केला',
+      'करा', 'करू', 'द्या', 'पडला', 'पडले', 'पडली', 'खड्डा', 'खड्डे', 'रस्ता', 'रस्ते',
+      'पाणी', 'कचरा', 'दिवा', 'दिवे', 'तक्रार', 'पाहिजे', 'वारंवार', 'घंटागाडी', 'सांडपाणी',
+      'पुण्यात', 'येथे', 'बघायला', 'होत', 'होते', 'होती', 'सगळं', 'चालतं'
+    ];
+
+    const hindiWords = [
+      'है', 'हैं', 'नहीं', 'हुआ', 'हुई', 'हुए', 'किया', 'की', 'किए',
+      'करो', 'करें', 'दीजिए', 'पड़ा', 'पड़े', 'पड़ी', 'गड्ढा', 'गड्ढे', 'सड़क', 'सड़कें',
+      'पानी', 'कचरा', 'लाइट', 'शिकायत', 'चाहिए', 'बार-बार', 'गाड़ी', 'नाली',
+      'पुणे में', 'यहाँ', 'देखने', 'था', 'थी', 'थे', 'सब', 'चलेगा'
+    ];
+
+    const lower = str.toLowerCase();
+    let mrScore = 0;
+    let hiScore = 0;
+
+    marathiWords.forEach((w) => {
+      if (lower.includes(w)) mrScore++;
+    });
+    hindiWords.forEach((w) => {
+      if (lower.includes(w)) hiScore++;
+    });
+
+    if (mrScore > hiScore) {
+      return { code: 'mr', name: 'Marathi', native: 'मराठी' };
+    }
+    if (hiScore > mrScore) {
+      return { code: 'hi', name: 'Hindi', native: 'हिंदी' };
+    }
+
+    return { code: 'mr', name: 'Marathi / Hindi', native: 'मराठी / हिंदी' };
+  }
+
+  return null;
+}
+
 function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }) {
   const [text, setText] = useState(initialComplaint?.text || '');
   const defaultLoc = lang === 'hi' || lang === 'mr' ? 'कोथरूड, पुणे' : 'Kothrud, Pune';
-  const [location, setLocation] = useState(initialComplaint?.location || defaultLoc);
+  const initialLocation = initialComplaint?.location;
+  const initialLocationAddress = typeof initialLocation === 'string'
+    ? initialLocation
+    : initialLocation?.address || '';
+  const [selectedLocation, setSelectedLocation] = useState(
+    initialLocation && typeof initialLocation === 'object' ? initialLocation : null,
+  );
+  const [manualLocation, setManualLocation] = useState(
+    initialLocationAddress || (initialComplaint ? '' : defaultLoc),
+  );
   const [category, setCategory] = useState(initialComplaint?.category || '');
   const [image, setImage] = useState(initialComplaint?.image || null);
   const [imagePreview, setImagePreview] = useState('');
@@ -440,6 +507,139 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef(null);
   const canContinue = text.trim().length > 10;
+
+  // Voice speech-to-text and language understanding
+  const [isListening, setIsListening] = useState(false);
+  const initialVoiceLang = lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
+  const [voiceLang, setVoiceLang] = useState(initialVoiceLang);
+  const [detectedVoiceLang, setDetectedVoiceLang] = useState(null);
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    const mapped = lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
+    setVoiceLang(mapped);
+  }, [lang]);
+
+  useEffect(() => {
+    if (text) {
+      const detected = detectSpokenLanguage(text);
+      if (detected) setDetectedVoiceLang(detected);
+    }
+  }, []);
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+    setInterimTranscript('');
+  };
+
+  const startListening = (targetLang = voiceLang) => {
+    setVoiceError('');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceError(t.form.voiceNotSupported || 'Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      return;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = targetLang;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setInterimTranscript('');
+      };
+
+      recognition.onresult = (event) => {
+        let currentInterim = '';
+        let currentFinal = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const piece = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            currentFinal += piece;
+          } else {
+            currentInterim += piece;
+          }
+        }
+
+        if (currentInterim) {
+          setInterimTranscript(currentInterim);
+          const detected = detectSpokenLanguage(currentInterim);
+          if (detected) setDetectedVoiceLang(detected);
+        }
+
+        if (currentFinal) {
+          const detected = detectSpokenLanguage(currentFinal);
+          if (detected) setDetectedVoiceLang(detected);
+
+          setText((prev) => {
+            const trimmed = prev.trim();
+            if (!trimmed) return currentFinal.trim();
+            return trimmed + ' ' + currentFinal.trim();
+          });
+          setInterimTranscript('');
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'not-allowed') {
+          setVoiceError(t.form.voicePermissionDenied || 'Microphone access denied. Please allow microphone permission in your browser.');
+          setIsListening(false);
+        } else if (event.error === 'no-speech') {
+          // Normal pause in speech
+        } else {
+          setVoiceError(`Voice error: ${event.error}`);
+          setIsListening(false);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setInterimTranscript('');
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      setVoiceError(err.message || 'Could not initialize speech recognition.');
+      setIsListening(false);
+    }
+  };
+
+  const handleVoiceLangChange = (newLang) => {
+    setVoiceLang(newLang);
+    if (isListening) {
+      startListening(newLang);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch (e) {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!image) {
@@ -472,6 +672,23 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
     setImageError('');
   };
 
+  const handleLocationChange = (nextLocation) => {
+    setSelectedLocation(nextLocation);
+    if (nextLocation) setManualLocation(nextLocation.address || '');
+  };
+
+  const handleManualLocationChange = (event) => {
+    setManualLocation(event.target.value);
+    setSelectedLocation(null);
+  };
+
+  const handleAnalyze = () => {
+    const location = selectedLocation || (manualLocation.trim()
+      ? { address: manualLocation.trim() }
+      : null);
+    onAnalyze({ text, location, category, image });
+  };
+
   return (
     <>
       <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
@@ -488,15 +705,100 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
             <textarea
               id="complaint"
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                const detected = detectSpokenLanguage(e.target.value);
+                if (detected) setDetectedVoiceLang(detected);
+              }}
               placeholder={t.form.placeholder}
               maxLength={500}
             />
-            <button className="mic-button" aria-label="Voice input">
-              <Mic size={20} />
+            <button
+              type="button"
+              className={`mic-button ${isListening ? 'listening' : ''}`}
+              onClick={() => (isListening ? stopListening() : startListening())}
+              aria-label={isListening ? 'Stop voice recording' : (t.form.voiceInput || 'Voice input')}
+              aria-pressed={isListening}
+              title={isListening ? 'Stop voice recording' : (t.form.voiceInput || 'Voice input (Marathi, Hindi, or English)')}
+            >
+              {isListening ? <MicOff size={20} /> : <Mic size={20} />}
             </button>
             <span className="counter">{text.length}/500</span>
           </div>
+
+          {/* Active Voice Assistant Panel */}
+          {isListening && (
+            <div className="voice-active-panel" role="region" aria-live="polite">
+              <div className="voice-status-row">
+                <div className="voice-indicator">
+                  <span className="voice-pulse-dot" />
+                  <span>{t.form.voiceListening || 'Listening...'}</span>
+                  <span className="voice-soundwave" aria-hidden="true">
+                    <span /><span /><span /><span />
+                  </span>
+                </div>
+
+                <div className="voice-lang-chips" role="group" aria-label="Select speaking language">
+                  <span className="voice-lang-label">{t.form.voiceSpeakingIn || 'Speaking in'}:</span>
+                  <button
+                    type="button"
+                    className={`voice-lang-chip ${voiceLang === 'mr-IN' ? 'active' : ''}`}
+                    onClick={() => handleVoiceLangChange('mr-IN')}
+                  >
+                    🇮🇳 {t.form.voiceLangMarathi || 'मराठी'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`voice-lang-chip ${voiceLang === 'hi-IN' ? 'active' : ''}`}
+                    onClick={() => handleVoiceLangChange('hi-IN')}
+                  >
+                    🇮🇳 {t.form.voiceLangHindi || 'हिंदी'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`voice-lang-chip ${voiceLang === 'en-IN' ? 'active' : ''}`}
+                    onClick={() => handleVoiceLangChange('en-IN')}
+                  >
+                    🌐 {t.form.voiceLangEnglish || 'English'}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="voice-stop-button"
+                  onClick={stopListening}
+                >
+                  <Check size={14} /> {t.form.voiceStop || 'Done'}
+                </button>
+              </div>
+
+              {interimTranscript && (
+                <div className="voice-interim-preview">
+                  <span className="voice-interim-text">“{interimTranscript}”</span>
+                  {detectedVoiceLang && (
+                    <span className="voice-detected-tag">
+                      {t.form.voiceDetectedLang || 'Detected'}: <b>{detectedVoiceLang.native}</b>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {voiceError && (
+            <div className="voice-error-banner" role="alert">
+              <span>{voiceError}</span>
+              <button type="button" onClick={() => setVoiceError('')} aria-label="Dismiss">✕</button>
+            </div>
+          )}
+
+          {!isListening && detectedVoiceLang && text.trim().length > 0 && (
+            <div>
+              <span className="voice-detected-badge-static">
+                🗣️ {t.form.voiceDetectedLang || 'Language'}: {detectedVoiceLang.native}
+              </span>
+            </div>
+          )}
           <div className="examples">
             <span>{t.form.tryExample}</span>
             {t.form.examples.map((example) => (
@@ -561,14 +863,26 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
             }}
             t={t}
           />
-          <div className="form-row">
-            <div>
-              <label htmlFor="location"><MapPin size={16} /> {t.form.labelLocation}</label>
-              <div className="input-with-icon">
-                <MapPin size={17} />
-                <input id="location" value={location} onChange={(e) => setLocation(e.target.value)} />
-              </div>
-            </div>
+           <div className="form-row location-category-row">
+             <div className="location-form-section">
+               <div className="location-section-heading">
+                 <label><MapPin size={16} /> {t.form.labelLocation}</label>
+                 <span>Choose a point on the map or enter an address below.</span>
+               </div>
+               <LocationPicker value={selectedLocation} onChange={handleLocationChange} />
+               <div className="manual-location-field">
+                 <label htmlFor="location">Manual location (optional)</label>
+                 <div className="input-with-icon">
+                   <MapPin size={17} />
+                   <input
+                     id="location"
+                     value={manualLocation}
+                     onChange={handleManualLocationChange}
+                     placeholder="e.g. Kothrud, Pune"
+                   />
+                 </div>
+               </div>
+             </div>
             <div>
               <label htmlFor="category">
                 {t.form.labelCategory}
@@ -584,12 +898,13 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
               </select>
             </div>
           </div>
-          <button
-            id="submit-analysis-button"
-            className="primary-button continue-button"
-            disabled={!canContinue}
-            onClick={() => onAnalyze({ text, location, category, image })}
-          >
+           <button
+             type="button"
+             id="submit-analysis-button"
+             className="primary-button continue-button"
+             disabled={!canContinue}
+             onClick={handleAnalyze}
+           >
             {t.form.submitBtn} <ArrowRight size={18} />
           </button>
         </div>
@@ -734,7 +1049,7 @@ function Analysis({ complaint, result, loading, error, onReview, onFollowUp, onR
               </div>
             </div>
             <div className="detail-location">
-              <MapPin size={16} /> {result?.location || complaint?.location || 'Location not provided'}
+               <MapPin size={16} /> {result?.location || locationToText(complaint?.location) || 'Location not provided'}
             </div>
             <button className="edit-button" onClick={onBack}>
               <ArrowLeft size={15} /> {t.analysis.editBtn}

@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { locationToText } from './geocoding';
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
@@ -84,7 +85,7 @@ export async function downloadReportPdf(complaint, result) {
 
   y = addSection(doc, 'Complaint', complaint.text, y);
   y += 2;
-  y = addSection(doc, 'Location', result.location || complaint.location || 'Location not provided', y);
+  y = addSection(doc, 'Location', result.location || locationToText(complaint?.location) || 'Location not provided', y);
   y += 2;
   y = addSection(doc, 'Category', result.category, y);
   y += 2;

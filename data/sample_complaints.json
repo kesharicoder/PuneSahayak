@@ -1,0 +1,10 @@
+[
+  {
+    "text": "वाकडमध्ये रस्त्यावर मोठा खड्डा आहे. रात्री तो दिसत नाही.",
+    "expected_category": "Roads"
+  },
+  {
+    "text": "Baner bus stop ke paas char din se kachra pada hai.",
+    "expected_category": "Waste Management"
+  }
+]

@@ -380,6 +380,7 @@ function Analysis({ complaint, result, loading, error, onReview, onRetry, onBack
 
 function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
   const [shared, setShared] = useState(false);
+  const recommendedAction = result.actions.length ? `${result.actions.join('. ')}.` : result.report;
   return (
     <>
       <Header onHome={onBack} compact lang={lang} setLang={setLang} t={t} />
@@ -410,7 +411,7 @@ function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
           </div>
           <div className="report-body">
             <span className="muted-label">{t.review.recommendedActionLabel}</span>
-            <p>{result.actions.join('. ')}.</p>
+            <p>{recommendedAction}</p>
           </div>
         </div>
         <div className="review-actions">
@@ -430,7 +431,7 @@ function Review({ complaint, result, onBack, onDone, lang, setLang, t }) {
             <Check size={19} />
             <div>
               <b>{t.review.successHeading}</b>
-              <span>{t.review.successText}<strong>{result.reference}</strong>{t.review.successSub}</span>
+              <span>{result.reference ? <>{t.review.successText}<strong>{result.reference}</strong>{t.review.successSub}</> : 'Your report is ready to share with PMC.'}</span>
             </div>
           </div>
         )}
@@ -501,15 +502,31 @@ function App() {
   const [screen, setScreen] = useState('home');
   const [complaint, setComplaint] = useState(null);
   const [result, setResult] = useState(null);
+  const [analysisStatus, setAnalysisStatus] = useState('idle');
+  const [analysisError, setAnalysisError] = useState('');
 
   const t = translations[lang] || translations.en;
 
-  const start = () => setScreen('form');
+  const start = () => {
+    setResult(null);
+    setAnalysisError('');
+    setAnalysisStatus('idle');
+    setScreen('form');
+  };
   const analyze = async (data) => {
     setComplaint(data);
+    setResult(null);
+    setAnalysisError('');
+    setAnalysisStatus('loading');
     setScreen('analysis');
-    const response = await analyzeComplaint(data, lang);
-    setResult(response);
+    try {
+      const response = await analyzeComplaint(data);
+      setResult(response);
+      setAnalysisStatus('success');
+    } catch (error) {
+      setAnalysisStatus('error');
+      setAnalysisError(error instanceof Error ? error.message : 'The analysis service is unavailable. Please try again.');
+    }
   };
 
   return screen === 'home' ? (
@@ -519,28 +536,10 @@ function App() {
   ) : screen === 'analysis' ? (
     <Analysis
       complaint={complaint}
-      result={
-        result || {
-          summary:
-            lang === 'hi'
-              ? 'आपकी रिपोर्ट का विश्लेषण हो रहा है…'
-              : lang === 'mr'
-              ? 'आपल्या अहवालाचे वाचन सुरू आहे…'
-              : 'Reading your report…',
-          category:
-            lang === 'hi' ? 'नागरिक समस्या' : lang === 'mr' ? 'नागरी समस्या' : 'Civic issue',
-          urgency: lang === 'hi' ? 'मध्यम' : lang === 'mr' ? 'मध्यम' : 'Medium',
-          location: complaint?.location,
-          actions:
-            lang === 'hi'
-              ? ['उचित विभाग की खोज', 'समस्या की प्राथमिकता का निर्धारण', 'सुझावों की तैयारी']
-              : lang === 'mr'
-              ? ['योग्य विभाग शोधत आहोत', 'समस्येची निकड तपासत आहोत', 'शिफारसी तयार करत आहोत']
-              : ['Finding the right department', 'Checking issue urgency', 'Preparing recommendations'],
-          department:
-            lang === 'hi' || lang === 'mr' ? 'पुणे महानगरपालिका (PMC)' : 'Pune Municipal Corporation',
-        }
-      }
+      result={result}
+      loading={analysisStatus === 'loading'}
+      error={analysisStatus === 'error' ? analysisError : ''}
+      onRetry={() => complaint && analyze(complaint)}
       onReview={() => setScreen('review')}
       onBack={() => setScreen('form')}
       lang={lang}

@@ -42,8 +42,9 @@ enabled.
 The review screen generates and downloads a PDF directly in the browser. The
 PDF includes the complaint, attached image when it can be embedded, bilingual
 reports, category, urgency, location, department, recommended actions, and an
-AI-assisted-report disclaimer. Provider credentials are never read or sent by
-this frontend.
+AI-assisted-report disclaimer. The report is rendered with browser font
+fallbacks for Devanagari so Marathi text remains readable in the PDF. Provider
+credentials are never read or sent by this frontend.
 
 ## Folders
 

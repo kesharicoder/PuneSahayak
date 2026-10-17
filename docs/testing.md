@@ -9,8 +9,11 @@
 - Marathi, Hinglish, and English fixtures return the expected category shape.
 - Invalid model JSON produces a safe error instead of an unhandled response.
 - Missing location is reported in `missing_information`.
+- Structured location input accepts a complete coordinate pair, rejects out-of-range
+  or one-sided coordinates, and is passed to Gemma as separate report context.
 - Conversation context is passed to Gemma for the next analysis request.
-- Image uploads are accepted only for supported image types and bounded size.
+- Image uploads are accepted only for supported image types and bounded size;
+  JSON-encoded structured location form values are validated too.
 
 ### Frontend
 
@@ -19,6 +22,7 @@
 - The user can review and edit before generating a report.
 - The user can upload an image or invoke the camera capture input.
 - A report-generation click downloads a PDF file.
+- Marathi/Devanagari report text remains readable in the downloaded PDF.
 - A missing detail creates one follow-up question and keeps report generation disabled.
 - Mobile layout stacks cards and keeps primary actions usable.
 - No API key is included in the browser bundle.

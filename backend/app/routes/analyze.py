@@ -1,7 +1,7 @@
 """Complaint analysis HTTP endpoints."""
 
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +25,30 @@ ALLOWED_IMAGE_MIME_TYPES = frozenset(
 )
 
 
+def _parse_location_form(value: Any) -> Any:
+    """Parse a multipart location object while preserving legacy text values."""
+
+    if value is None or not isinstance(value, str):
+        return value
+
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    # A plain location such as ``Baner, Pune`` remains a string. Structured
+    # multipart callers send the object as a JSON object in this same field.
+    if not cleaned.startswith("{"):
+        return cleaned
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Keep malformed legacy text compatible; a valid-looking object still
+        # receives normal AnalysisRequest validation when it parses as JSON.
+        return cleaned
+    return parsed
+
+
 def _request_from_form(
     text: str,
     location: Optional[str],
@@ -45,7 +69,7 @@ def _request_from_form(
     try:
         return AnalysisRequest(
             text=text,
-            location=location,
+            location=_parse_location_form(location),
             category=category,
             language=language,
             conversation=conversation_data,

@@ -1,12 +1,13 @@
 import json
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import DEFAULT_GEMMA_MODEL, Settings
 from app.main import app
 from app.routes import analyze as analyze_route
-from app.schemas.analysis import AnalysisRequest, CivicAnalysis
+from app.schemas.analysis import AnalysisRequest, CivicAnalysis, StructuredLocation
 from app.services.gemma import (
     GemmaService,
     InvalidModelResponseError,
@@ -92,6 +93,77 @@ def test_conversation_context_is_sent_to_gemma(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert "Near MIT College gate." in fake_client.calls[0]["contents"]
+
+
+def test_structured_location_is_validated_and_sent_as_separate_prompt_context(monkeypatch) -> None:
+    fake_client = _mock_client(_model_payload())
+    service = GemmaService(
+        settings=Settings(gemini_api_key=None, gemma_model="test-model"),
+        client=fake_client,
+    )
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+
+    location = {
+        "latitude": 18.5596,
+        "longitude": 73.7868,
+        "address": "Baner, Pune",
+        "location_source": "map",
+        "location_accuracy": 8.5,
+        "location_confirmed": True,
+    }
+    response = client.post(
+        "/api/analyze",
+        json={
+            "text": "The footpath is blocked near the Baner bus stop.",
+            "location": location,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == "Baner, Pune"
+    prompt = fake_client.calls[0]["contents"]
+    context = json.loads(prompt.split("REQUEST_CONTEXT:\n", 1)[1])
+    assert context["location"] == "Baner, Pune"
+    assert context["selected_location"] == location
+    assert "GEMINI_API_KEY" not in prompt
+    assert "GEMMA_API_KEY" not in prompt
+
+
+def test_location_can_be_omitted_and_picker_coordinate_aliases_are_supported() -> None:
+    request_without_location = AnalysisRequest(
+        text="The streetlight has been broken for a week."
+    )
+    assert request_without_location.location is None
+
+    request_with_aliases = AnalysisRequest(
+        text="The streetlight has been broken for a week.",
+        location={"lat": 18.52, "lng": 73.85, "address": "Pune"},
+    )
+    assert isinstance(request_with_aliases.location, StructuredLocation)
+    assert request_with_aliases.location.latitude == 18.52
+    assert request_with_aliases.location.longitude == 73.85
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        {"latitude": 90.1, "longitude": 73.85},
+        {"latitude": 18.52, "longitude": -180.1},
+        {"latitude": 18.52, "longitude": 73.85, "location_accuracy": -1},
+        {"latitude": 18.52},
+        {"longitude": 73.85},
+    ],
+)
+def test_invalid_structured_location_is_rejected_before_provider_call(location) -> None:
+    response = client.post(
+        "/api/analyze",
+        json={
+            "text": "There is a persistent civic issue near my home.",
+            "location": location,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_urgency_and_department_aliases_are_normalized() -> None:
@@ -224,8 +296,31 @@ def test_analyze_image_route_passes_multipart_context_to_mocked_service(monkeypa
     assert response.json()["category"] == "Roads"
     request, image_bytes, mime_type = service.calls[0]
     assert request.text == "A pothole is blocking traffic near the bus stop."
+    assert request.location == "Baner, Pune"
     assert image_bytes == b"mock-image-bytes"
     assert mime_type == "image/png"
+
+
+def test_analyze_image_route_parses_json_structured_location(monkeypatch) -> None:
+    service = _StubImageService()
+    monkeypatch.setattr(analyze_route, "get_analysis_service", lambda: service)
+    location = {
+        "latitude": 18.5204,
+        "longitude": 73.8567,
+        "address": "Shivajinagar, Pune",
+        "location_source": "search",
+        "location_confirmed": True,
+    }
+
+    response = _image_request(location=json.dumps(location))
+
+    assert response.status_code == 200
+    request, _, _ = service.calls[0]
+    assert isinstance(request.location, StructuredLocation)
+    assert request.location.latitude == location["latitude"]
+    assert request.location.longitude == location["longitude"]
+    assert request.location.address == location["address"]
+    assert request.location.location_source == "search"
 
 
 def test_analyze_image_rejects_invalid_form_data_without_provider_call(monkeypatch) -> None:

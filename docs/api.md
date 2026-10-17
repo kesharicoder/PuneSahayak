@@ -27,7 +27,14 @@ Request:
 ```json
 {
   "text": "Baner bus stop ke paas char din se kachra pada hai.",
-  "location": "Baner, Pune",
+  "location": {
+    "latitude": 18.5596,
+    "longitude": 73.7868,
+    "address": "Baner, Pune",
+    "location_source": "search",
+    "location_accuracy": 12,
+    "location_confirmed": true
+  },
   "category": null,
   "language": "auto",
   "conversation": [
@@ -41,6 +48,14 @@ The backend calls the configured Gemma model and validates its JSON before
 returning it. `text` must contain at least 10 characters. `location`,
 `category`, and `language` are optional; `category`, when supplied, must be one
 of the categories in `data/categories.json`.
+
+`location` supports both the legacy display string and a structured object. A
+structured location has optional `latitude`, `longitude`, `address`,
+`location_source`, `location_accuracy`, and `location_confirmed` fields.
+`location_source` must be `map`, `search`, `gps`, or `manual`; latitude and
+longitude must be supplied together, with latitude in `[-90, 90]`, longitude in
+`[-180, 180]`, and non-negative accuracy. The existing map client's `lat` and
+`lng` keys are accepted as aliases for `latitude` and `longitude`.
 
 Response:
 
@@ -83,6 +98,12 @@ Content-Type: multipart/form-data
 ```
 
 The multipart request contains `image`, `text`, `location`, `category`,
-`language`, and optional JSON-encoded `conversation` fields. The backend keeps
-the image in memory, sends it to Gemma with the complaint context, and returns
-the same validated response shape as the text endpoint.
+`language`, and optional JSON-encoded `conversation` fields. `location` may be
+the legacy plain string or a JSON-encoded structured location object. The
+backend keeps the image in memory, sends it to Gemma with the complaint
+context, and returns the same validated response shape as the text endpoint.
+
+For structured input, the selected location is included in Gemma's prompt as a
+separate validated object for report context. Coordinates are not persisted,
+and the model is instructed to use only supplied coordinates rather than
+inventing exact values or guessing an address from coordinates alone.

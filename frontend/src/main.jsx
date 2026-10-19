@@ -900,7 +900,6 @@ function ComplaintForm({ onAnalyze, onBack, initialComplaint, lang, setLang, t }
               </div>
             ) : (
               <div className="image-preview-card">
-                <img src={imagePreview} alt={t.form.imagePreviewAlt} />
                 <div className="image-preview-details">
                   <b>{image.name}</b>
                   <span>{t.form.imageAttached}</span>

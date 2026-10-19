@@ -6,7 +6,7 @@ This document covers the hackathon MVP: a public frontend, a FastAPI backend, an
 
 ## Secrets
 
-- Store `GEMINI_API_KEY` only in a local `.env` file or deployment secret manager.
+- Store `GEMMA_API_KEY` or `GEMINI_API_KEY` only in a local `.env` file or deployment secret manager.
 - Never place keys in React code, browser local storage, screenshots, logs, README examples, or test fixtures.
 - Commit `.env.example` with empty placeholders only.
 - Rotate the key immediately if it is exposed.
@@ -14,6 +14,7 @@ This document covers the hackathon MVP: a public frontend, a FastAPI backend, an
 ## Input and model safety
 
 - Treat every complaint as untrusted user input.
+- Treat conversation messages and image contents as untrusted input.
 - Use a fixed system instruction and allowed category list.
 - Do not allow user text to override model instructions.
 - Validate the model response against a schema before returning it to the frontend.
